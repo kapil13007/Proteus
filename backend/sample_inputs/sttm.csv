@@ -1,0 +1,10 @@
+source_table,source_field,source_type,nullable,sample_data,transformation_rule,sql_logic,lookup_table,default_value,target_table,target_field,target_type,mapping_status
+raw.clinical_patients,patient_id,VARCHAR,NO,P-0001,Copy as-is,,,,analytics.fct_clinical_patients,patient_id,VARCHAR,Validated
+raw.clinical_patients,first_name,VARCHAR,YES,John,Concatenate first and last name with a space,"CONCAT(first_name, ' ', last_name)",,,analytics.fct_clinical_patients,full_name,VARCHAR,Validated
+raw.clinical_patients,cust_email_01,VARCHAR,YES,John.DOE@Email.com,Clean email: trim whitespace and lowercase,,,,analytics.fct_clinical_patients,email_address,VARCHAR,Validated
+raw.clinical_patients,dob,VARCHAR,YES,1985-03-14,Parse ISO-8601 string to date,,,,analytics.fct_clinical_patients,date_of_birth,DATE,Validated
+raw.clinical_patients,weight_kg,FLOAT,YES,82.4,Round to nearest integer,,,,analytics.fct_clinical_patients,weight,INTEGER,Validated
+raw.clinical_patients,site_code,VARCHAR,YES,01,Map site code to city name,"CASE site_code WHEN '01' THEN 'Chennai' WHEN '02' THEN 'Mumbai' WHEN '03' THEN 'Delhi' ELSE 'Unknown' END",site_lookup,Unknown,analytics.fct_clinical_patients,site_city,VARCHAR,Validated
+raw.clinical_patients,enrolled_flag,VARCHAR,YES,Y,Convert Y/N flag to boolean,(enrolled_flag = 'Y'),,,analytics.fct_clinical_patients,is_enrolled,BOOLEAN,Validated
+raw.clinical_patients,created_at,TIMESTAMP,YES,2026-06-01 09:15:00,Stamp load time,NOW(),,NOW(),analytics.fct_clinical_patients,_loaded_at,TIMESTAMP,Validated
+raw.clinical_patients,site_code,VARCHAR,YES,01,Keep raw site code for QA,,,,analytics.fct_clinical_patients,site_code_raw,VARCHAR,In Progress
