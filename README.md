@@ -1,4 +1,4 @@
-# Mapfl0w — Agentic STTM Automation
+# Proteus — Agentic STTM Automation
 
 Mapfl0w automates Source-to-Target Mapping (STTM) — a manual, error-prone process where data engineers translate mapping spreadsheets into transformation code. At companies like Saama Technologies, this typically requires multiple engineers spending days writing Dataform `.sqlx` files by hand from Google Sheets templates.
 
