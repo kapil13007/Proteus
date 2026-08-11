@@ -26,6 +26,10 @@ export interface RunAudit {
 export interface RunMeta {
   files: string[];
   llmAttempts: number;
+  llmPromptTokens?: number;
+  llmCompletionTokens?: number;
+  llmCostUsd?: number;
+  createdBy?: string;
   approvedBy?: string;
   workflowId?: string;
 }

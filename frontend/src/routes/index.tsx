@@ -43,9 +43,13 @@ function StatCard({
 
 function RunsPage() {
   const navigate = useNavigate();
-  const { data: runs, isLoading } = useQuery({ queryKey: ["runs"], queryFn: listRuns });
+  const { data: runs, isLoading, isError, refetch } = useQuery({
+    queryKey: ["runs"],
+    queryFn: listRuns,
+    retry: 1,
+  });
 
-  if (isLoading || !runs) {
+  if (isLoading) {
     return (
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -54,6 +58,25 @@ function RunsPage() {
           ))}
         </div>
         <Skeleton className="h-96" />
+      </div>
+    );
+  }
+
+  if (isError || !runs) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <p className="text-sm text-foreground">Couldn't load runs.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The server didn't respond as expected — it may be down or misconfigured.
+          </p>
+          <button
+            onClick={() => void refetch()}
+            className="mt-4 inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
+          >
+            Try again
+          </button>
+        </div>
       </div>
     );
   }

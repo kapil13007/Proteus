@@ -14,8 +14,15 @@ const listeners = new Map<string, Set<() => void>>();
 const pollers = new Map<string, ReturnType<typeof setInterval>>();
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
-  if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path} → ${res.status}`);
+  const res = await fetch(`${BASE}${path}`, { ...init, credentials: "include" });
+  if (!res.ok) {
+    // FastAPI error responses carry {"detail": "..."} — surface that when present.
+    const message = await res
+      .json()
+      .then((body: { detail?: string }) => body.detail)
+      .catch(() => undefined);
+    throw new Error(message || `${init?.method ?? "GET"} ${path} → ${res.status}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -55,7 +62,7 @@ export async function approveRun(id: string, editedSqlx?: string): Promise<void>
   await fetchJson(`/runs/${id}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ approvedBy: "reviewer", sqlx: editedSqlx ?? null }),
+    body: JSON.stringify({ sqlx: editedSqlx ?? null }),
   });
   void getRun(id);
 }
@@ -110,6 +117,45 @@ export function subscribeRun(id: string, cb: () => void): () => void {
 /** Synchronous snapshot from the cache. */
 export function peekRun(id: string): Run | undefined {
   return cache.get(id);
+}
+
+// --------------------------------------------------------------------------- //
+//  Auth
+// --------------------------------------------------------------------------- //
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/** GET /auth/me — returns null instead of throwing when unauthenticated. */
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  try {
+    return await fetchJson<AuthUser>("/auth/me");
+  } catch {
+    return null;
+  }
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  return fetchJson<AuthUser>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function register(email: string, password: string, name?: string): Promise<AuthUser> {
+  return fetchJson<AuthUser>("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name: name ?? "" }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await fetchJson("/auth/logout", { method: "POST" });
 }
 
 /** Placeholder previews for slots with binary uploads (e.g. Excel). */

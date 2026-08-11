@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
@@ -10,6 +10,8 @@ import {
 import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AppShell } from "../components/AppShell";
+import { LoginScreen } from "../components/LoginScreen";
+import { getCurrentUser } from "../lib/api";
 
 function NotFoundComponent() {
   return (
@@ -128,10 +130,32 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </AppShell>
+      <AuthGate />
     </QueryClientProvider>
+  );
+}
+
+function AuthGate() {
+  const queryClient = useQueryClient();
+  const { data: user, isLoading } = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: getCurrentUser,
+  });
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
+  if (!user) {
+    return (
+      <LoginScreen onAuthed={() => void queryClient.invalidateQueries({ queryKey: ["auth", "me"] })} />
+    );
+  }
+
+  return (
+    <AppShell user={user}>
+      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+      <Outlet />
+    </AppShell>
   );
 }

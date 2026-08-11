@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutList,
+  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
@@ -8,6 +9,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { logout, type AuthUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -37,9 +39,16 @@ function ConnectionBadge({ name }: { name: string }) {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, user }: { children: ReactNode; user: AuthUser }) {
   const [expanded, setExpanded] = useState(true);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  async function handleLogout() {
+    await logout();
+    window.location.href = "/";
+  }
+
+  const initial = (user.name || user.email).charAt(0).toUpperCase();
 
   return (
     <div className="flex min-h-screen w-full">
@@ -92,14 +101,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <div className={cn("flex items-center gap-3 rounded-md px-3 py-2", !expanded && "justify-center px-0")}>
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-elevated font-mono text-xs text-foreground">
-              K
+              {initial}
             </span>
             {expanded && (
-              <div className="min-w-0">
-                <p className="truncate text-sm text-foreground">Kapil</p>
-                <p className="truncate font-mono text-xs text-muted-foreground">data-eng</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm text-foreground">{user.name || user.email}</p>
+                <p className="truncate font-mono text-xs text-muted-foreground">{user.email}</p>
               </div>
             )}
+            <button
+              onClick={handleLogout}
+              aria-label="Log out"
+              title="Log out"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground"
+            >
+              <LogOut className="size-3.5" />
+            </button>
           </div>
         </div>
       </aside>

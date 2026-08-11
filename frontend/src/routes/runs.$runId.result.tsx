@@ -179,6 +179,18 @@ function RunResultPage() {
             </dd>
           </div>
           <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">LLM cost</dt>
+            <dd className="text-foreground">
+              {((run.meta.llmPromptTokens ?? 0) + (run.meta.llmCompletionTokens ?? 0)).toLocaleString("en-US")} tokens
+              {" · $"}
+              {(run.meta.llmCostUsd ?? 0).toFixed(4)}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">created by</dt>
+            <dd className="text-foreground">{run.meta.createdBy ?? "—"}</dd>
+          </div>
+          <div className="flex justify-between gap-4">
             <dt className="text-muted-foreground">approved by</dt>
             <dd className="text-foreground">{run.meta.approvedBy ?? "—"}</dd>
           </div>
