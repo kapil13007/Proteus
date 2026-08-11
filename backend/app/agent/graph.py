@@ -55,6 +55,8 @@ class AgentState(TypedDict, total=False):
     attempt: int
     validator_notes: str
     failed: bool
+    llm_prompt_tokens: int
+    llm_completion_tokens: int
 
 
 def _llm():
@@ -174,8 +176,18 @@ def node_generate(state: AgentState) -> AgentState:
     sqlx = extract_sqlx_from_llm(reply.content)
     lines = sqlx.count("\n") + 1
     push_feed(rid, "tool_result", f"{lines} lines of .sqlx written")
-    update_run(rid, sqlx_code=sqlx, sqlx_path=path, llm_attempts=attempt)
-    return {"sqlx_code": sqlx, "sqlx_path": path, "attempt": attempt, "dry_run_error": ""}
+
+    usage = getattr(reply, "usage_metadata", None) or {}
+    prompt_tok = state.get("llm_prompt_tokens", 0) + usage.get("input_tokens", 0)
+    completion_tok = state.get("llm_completion_tokens", 0) + usage.get("output_tokens", 0)
+    llm_cost = (prompt_tok * settings.groq_price_per_1m_input
+                + completion_tok * settings.groq_price_per_1m_output) / 1_000_000
+
+    update_run(rid, sqlx_code=sqlx, sqlx_path=path, llm_attempts=attempt,
+               llm_prompt_tokens=prompt_tok, llm_completion_tokens=completion_tok,
+               llm_cost_usd=round(llm_cost, 4))
+    return {"sqlx_code": sqlx, "sqlx_path": path, "attempt": attempt, "dry_run_error": "",
+            "llm_prompt_tokens": prompt_tok, "llm_completion_tokens": completion_tok}
 
 
 def node_dry_run(state: AgentState) -> AgentState:

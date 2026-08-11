@@ -26,6 +26,13 @@ class Settings(BaseSettings):
 
     max_dry_run_attempts: int = 3
 
+    # Auth (email/password + JWT session cookie)
+    session_secret: str = "change-me-in-dev"
+
+    # LLM cost estimate — check console.groq.com/pricing for current rates
+    groq_price_per_1m_input: float = 0.59
+    groq_price_per_1m_output: float = 0.79
+
     class Config:
         env_file = ".env"
         extra = "ignore"

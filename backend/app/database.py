@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -18,10 +20,21 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=True)
+    name = Column(String, default="")
+    created_at = Column(BigInteger, default=0)
+
+
 class RunRecord(Base):
     __tablename__ = "runs"
 
     id = Column(String, primary_key=True)
+    created_by = Column(String, nullable=True)  # creator's email
     target_table = Column(String, default="")
     status = Column(String, default="running")  # running|awaiting_review|succeeded|failed|rejected
     current_step = Column(Integer, default=0)
@@ -47,6 +60,9 @@ class RunRecord(Base):
     cost_gb = Column(Float, nullable=True)
     cost_usd = Column(Float, nullable=True)
     llm_attempts = Column(Integer, default=0)
+    llm_prompt_tokens = Column(Integer, default=0)
+    llm_completion_tokens = Column(Integer, default=0)
+    llm_cost_usd = Column(Float, default=0.0)
 
     audit_rows_written = Column(Integer, nullable=True)
     audit_counts_match = Column(Boolean, nullable=True)

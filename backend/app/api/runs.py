@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.agent.graph import AgentState, run_execution, run_generation
-from app.database import RunRecord, get_db
+from app.auth import get_current_user
+from app.database import RunRecord, User, get_db
 from app.schemas import run_to_dict
 from app.services.runstore import push_feed, update_run
 
@@ -15,13 +16,13 @@ router = APIRouter()
 
 
 @router.get("/runs")
-def list_runs(db: Session = Depends(get_db)):
+def list_runs(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     runs = db.query(RunRecord).order_by(RunRecord.started_at.desc()).all()
     return [run_to_dict(r) for r in runs]
 
 
 @router.get("/runs/{run_id}")
-def get_run(run_id: str, db: Session = Depends(get_db)):
+def get_run(run_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     run = db.get(RunRecord, run_id)
     if not run:
         raise HTTPException(404, "run not found")
@@ -36,6 +37,7 @@ async def create_run(
     repo: UploadFile = File(...),
     udf: UploadFile | None = File(None),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     run_id = f"run_{uuid.uuid4().hex[:8]}"
     source_md = (await source.read()).decode("utf-8", errors="replace")
@@ -50,6 +52,7 @@ async def create_run(
 
     record = RunRecord(
         id=run_id,
+        created_by=user.email,
         status="running",
         started_at=int(time.time() * 1000),
         source_schema_md=source_md,
@@ -103,22 +106,26 @@ def _rebuild_state(run: RunRecord) -> AgentState:
 
 
 @router.post("/runs/{run_id}/approve")
-def approve_run(run_id: str, body: dict | None = None, db: Session = Depends(get_db)):
+def approve_run(
+    run_id: str,
+    body: dict | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     run = db.get(RunRecord, run_id)
     if not run:
         raise HTTPException(404, "run not found")
     if run.status != "awaiting_review":
         raise HTTPException(409, f"run is {run.status}, not awaiting_review")
 
-    approver = (body or {}).get("approvedBy", "reviewer")
     # If the reviewer edited the .sqlx in the UI, accept their version
     edited = (body or {}).get("sqlx")
     if edited and edited.strip():
         update_run(run_id, sqlx_code=edited)
         run.sqlx_code = edited
 
-    update_run(run_id, approved_by=approver)
-    push_feed(run_id, "thought", f"Approved by {approver} — resuming pipeline")
+    update_run(run_id, approved_by=user.email)
+    push_feed(run_id, "thought", f"Approved by {user.email} — resuming pipeline")
 
     try:
         state = _rebuild_state(run)
@@ -132,7 +139,12 @@ def approve_run(run_id: str, body: dict | None = None, db: Session = Depends(get
 
 
 @router.post("/runs/{run_id}/reject")
-def reject_run(run_id: str, body: dict, db: Session = Depends(get_db)):
+def reject_run(
+    run_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     run = db.get(RunRecord, run_id)
     if not run:
         raise HTTPException(404, "run not found")

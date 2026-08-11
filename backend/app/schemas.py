@@ -17,7 +17,15 @@ def run_to_dict(r: RunRecord) -> dict:
         if r.audit_failed_check:
             audit["failedCheck"] = r.audit_failed_check
 
-    meta = {"files": r.file_names or [], "llmAttempts": r.llm_attempts or 0}
+    meta = {
+        "files": r.file_names or [],
+        "llmAttempts": r.llm_attempts or 0,
+        "llmPromptTokens": r.llm_prompt_tokens or 0,
+        "llmCompletionTokens": r.llm_completion_tokens or 0,
+        "llmCostUsd": r.llm_cost_usd or 0.0,
+    }
+    if r.created_by:
+        meta["createdBy"] = r.created_by
     if r.approved_by:
         meta["approvedBy"] = r.approved_by
     if r.workflow_id:
