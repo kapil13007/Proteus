@@ -1,39 +1,39 @@
-import os
+"""FastAPI entrypoint: `uvicorn app.main:app --reload --port 8000` from backend/."""
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from app.api.auth import router as auth_router
-from app.api.runs import router
-from app.config import settings
+from app.api.runs import router as runs_router
+from app.api.system import router as system_router
+from app.config import DEV_SESSION_SECRET, settings
 from app.database import create_tables
+from app.warehouse import get_warehouse, reset_warehouse
 
-# LangSmith tracing via env vars (langchain reads these directly)
-if settings.langsmith_tracing and settings.langsmith_api_key:
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith_api_key
-    os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project
+log = logging.getLogger("mapflow")
 
-app = FastAPI(title="Mapfl0w API")
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    create_tables()
+    await run_in_threadpool(get_warehouse)  # opens (and on first start, seeds) the local warehouse
+    if settings.session_secret == DEV_SESSION_SECRET:
+        log.warning("SESSION_SECRET is the development default — set a random one in backend/.env")
+    yield
+    reset_warehouse()
+
+
+app = FastAPI(title="Mapfl0w API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    create_tables()
-
-
-@app.get("/health")
-def health():
-    return {"ok": True}
-
-
+app.include_router(system_router)
 app.include_router(auth_router)
-app.include_router(router)
+app.include_router(runs_router)

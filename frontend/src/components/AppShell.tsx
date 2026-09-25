@@ -9,6 +9,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useSystemStatus } from "@/hooks/use-system-status";
 import { logout, type AuthUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -30,10 +31,13 @@ function pageTitle(pathname: string): string {
   return "Mapfl0w";
 }
 
-function ConnectionBadge({ name }: { name: string }) {
+function ConnectionBadge({ name, ok, title }: { name: string; ok: boolean; title: string }) {
   return (
-    <span className="hidden items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground sm:inline-flex">
-      <span className="size-1.5 rounded-full bg-success" />
+    <span
+      title={title}
+      className="hidden items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground sm:inline-flex"
+    >
+      <span className={cn("size-1.5 rounded-full", ok ? "bg-success" : "bg-muted-foreground/50")} />
       {name}
     </span>
   );
@@ -42,6 +46,7 @@ function ConnectionBadge({ name }: { name: string }) {
 export function AppShell({ children, user }: { children: ReactNode; user: AuthUser }) {
   const [expanded, setExpanded] = useState(true);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { data: system } = useSystemStatus();
 
   async function handleLogout() {
     await logout();
@@ -58,7 +63,9 @@ export function AppShell({ children, user }: { children: ReactNode; user: AuthUs
           expanded ? "w-60" : "w-[72px]",
         )}
       >
-        <div className={cn("flex h-14 items-center border-b", expanded ? "px-4" : "justify-center")}>
+        <div
+          className={cn("flex h-14 items-center border-b", expanded ? "px-4" : "justify-center")}
+        >
           <Link to="/" className="flex items-center gap-2 rounded-md">
             <span className="flex size-7 items-center justify-center rounded-md bg-primary font-mono text-sm font-bold text-primary-foreground">
               m
@@ -74,7 +81,9 @@ export function AppShell({ children, user }: { children: ReactNode; user: AuthUs
               to={item.to}
               activeOptions={{ exact: item.exact ?? false }}
               activeProps={{ className: "bg-sidebar-accent text-primary" }}
-              inactiveProps={{ className: "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground" }}
+              inactiveProps={{
+                className: "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+              }}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 !expanded && "justify-center px-0",
@@ -96,10 +105,19 @@ export function AppShell({ children, user }: { children: ReactNode; user: AuthUs
             )}
             aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
           >
-            {expanded ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+            {expanded ? (
+              <PanelLeftClose className="size-4" />
+            ) : (
+              <PanelLeftOpen className="size-4" />
+            )}
             {expanded && <span>Collapse</span>}
           </button>
-          <div className={cn("flex items-center gap-3 rounded-md px-3 py-2", !expanded && "justify-center px-0")}>
+          <div
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2",
+              !expanded && "justify-center px-0",
+            )}
+          >
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-elevated font-mono text-xs text-foreground">
               {initial}
             </span>
@@ -125,9 +143,25 @@ export function AppShell({ children, user }: { children: ReactNode; user: AuthUs
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/95 px-6 backdrop-blur-none">
           <h1 className="text-sm font-medium text-foreground">{pageTitle(pathname)}</h1>
           <div className="flex items-center gap-2">
-            <ConnectionBadge name="BigQuery" />
-            <ConnectionBadge name="GitHub" />
-            <ConnectionBadge name="Dataform" />
+            <ConnectionBadge
+              name="Groq"
+              ok={!!system?.llm.configured}
+              title={system?.llm.configured ? system.llm.model : "GROQ_API_KEY not set"}
+            />
+            <ConnectionBadge
+              name="DuckDB"
+              ok={!!system}
+              title={system?.warehouse.engine ?? "backend unreachable"}
+            />
+            <ConnectionBadge
+              name="GitHub"
+              ok={!!system?.github.configured}
+              title={
+                system?.github.configured
+                  ? system.github.repo
+                  : "not configured — zip download only"
+              }
+            />
           </div>
         </header>
         <main className="flex-1 px-6 py-6">{children}</main>

@@ -1,19 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, ChevronDown, ExternalLink, X } from "lucide-react";
+import { Check, ChevronDown, Download, ExternalLink, X } from "lucide-react";
 import { useState } from "react";
 import { ActivityFeed } from "@/components/ActivityFeed";
-import { CodeBlock } from "@/components/CodeBlock";
+import { DecisionsTable } from "@/components/DecisionsTable";
+import { FileViewer } from "@/components/FileViewer";
+import { FindingsList } from "@/components/FindingsList";
+import { RunMetricsStrip } from "@/components/RunMetricsStrip";
 import { Skeleton } from "@/components/Skeleton";
 import { StatusPill } from "@/components/StatusPill";
-import { formatDuration } from "@/lib/format";
 import { useLiveRun } from "@/hooks/use-live-run";
+import { bundleUrl } from "@/lib/api";
+import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/runs/$runId/result")({
   head: () => ({
     meta: [
       { title: "Run Result — Mapfl0w" },
-      { name: "description", content: "Audit report and generated code for a finished run." },
+      {
+        name: "description",
+        content: "Audit report, generated code and decision trail for a run.",
+      },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -22,55 +29,27 @@ export const Route = createFileRoute("/runs/$runId/result")({
 
 function Section({
   title,
-  action,
   defaultOpen = false,
   children,
 }: {
   title: string;
-  action?: React.ReactNode;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-lg border bg-card">
-      <div className="flex items-center justify-between px-5 py-3.5">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2 text-sm font-medium text-foreground"
-          aria-expanded={open}
-        >
-          <ChevronDown
-            className={cn("size-4 text-muted-foreground transition-transform", !open && "-rotate-90")}
-          />
-          {title}
-        </button>
-        {action}
-      </div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-5 py-3.5 text-sm font-medium text-foreground"
+        aria-expanded={open}
+      >
+        <ChevronDown
+          className={cn("size-4 text-muted-foreground transition-transform", !open && "-rotate-90")}
+        />
+        {title}
+      </button>
       {open && <div className="border-t px-5 py-4">{children}</div>}
-    </div>
-  );
-}
-
-function AuditStat({
-  value,
-  label,
-  ok,
-  failText,
-}: {
-  value: string;
-  label: string;
-  ok: boolean;
-  failText?: string;
-}) {
-  return (
-    <div className="rounded-lg border bg-terminal p-5">
-      <p className={cn("font-mono text-2xl", ok ? "text-foreground" : "text-destructive")}>{value}</p>
-      <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-        {ok ? <Check className="size-3.5 text-success" /> : <X className="size-3.5 text-destructive" />}
-        {label}
-      </p>
-      {!ok && failText && <p className="mt-2 text-xs leading-5 text-destructive">{failText}</p>}
     </div>
   );
 }
@@ -81,7 +60,7 @@ function RunResultPage() {
 
   if (!run) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-6xl space-y-4">
         <Skeleton className="h-16" />
         <Skeleton className="h-40" />
         <Skeleton className="h-24" />
@@ -90,69 +69,114 @@ function RunResultPage() {
   }
 
   const audit = run.audit;
+  const publish = run.publish;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
+    <div className="mx-auto max-w-6xl space-y-5">
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="font-mono text-base text-foreground">{run.id}</h2>
-        <span className="font-mono text-sm text-muted-foreground">{run.targetTable}</span>
+        <span className="font-mono text-sm text-muted-foreground">
+          {run.targetTable} ← {run.sourceTable}
+        </span>
         <StatusPill status={run.status} />
         <span className="ml-auto font-mono text-xs text-muted-foreground">
-          duration: {formatDuration(run.durationSec)}
+          wall clock incl. review: {formatDuration(run.durationSec)}
         </span>
       </header>
 
       {audit ? (
         <div className="rounded-lg border bg-card p-5">
-          <h3 className="mb-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Audit report
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <AuditStat
-              value={audit.rowsWritten.toLocaleString("en-US")}
-              label="rows written"
-              ok
-            />
-            <AuditStat
-              value={audit.countsMatch ? "match" : "mismatch"}
-              label="row counts"
-              ok={audit.countsMatch}
-              failText={!audit.countsMatch ? audit.failedCheck : undefined}
-            />
-            <AuditStat
-              value={audit.nullsCheck ? "0 nulls" : "nulls found"}
-              label="required columns"
-              ok={audit.nullsCheck}
-              failText={audit.nullsCheck ? undefined : audit.failedCheck}
-            />
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Audit — the generated Dataform assertions, run locally
+            </h3>
+            <span className="font-mono text-xs text-muted-foreground">
+              {audit.rowsWritten.toLocaleString("en-US")} rows written
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {audit.checks.map((c) => (
+              <div key={c.name} className="rounded-lg border bg-terminal p-4">
+                <p className="flex items-center gap-1.5 font-mono text-sm text-foreground">
+                  {c.ok ? (
+                    <Check className="size-4 text-success" />
+                  ) : (
+                    <X className="size-4 text-destructive" />
+                  )}
+                  {c.name}
+                </p>
+                <p
+                  className={cn(
+                    "mt-2 text-xs leading-5",
+                    c.ok ? "text-muted-foreground" : "text-destructive",
+                  )}
+                >
+                  {c.detail}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       ) : (
         <div className="rounded-lg border bg-card p-5">
           <p className="text-sm text-muted-foreground">
             {run.status === "rejected"
-              ? "No audit — this run was sent back to the agent before execution."
-              : "No audit report — the run stopped before the audit step."}
+              ? "No audit — this run was rejected before execution."
+              : (run.error ?? "No audit report — the run stopped before execution.")}
           </p>
         </div>
       )}
 
-      <Section
-        title="Generated code"
-        action={
-          <a
-            href="https://github.com/kapil13007/dataform-models"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            View on GitHub
-            <ExternalLink className="size-3" />
-          </a>
-        }
-      >
-        <p className="mb-2 font-mono text-xs text-muted-foreground">{run.sqlxPath}</p>
-        <CodeBlock code={run.sqlx} className="max-h-[480px]" />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-5 py-4">
+        <div className="text-sm">
+          {publish?.pushed ? (
+            <span className="text-foreground">
+              Published {publish.files} files to <span className="font-mono">{publish.branch}</span>{" "}
+              as commit <span className="font-mono">{publish.sha}</span>
+            </span>
+          ) : publish ? (
+            <span className={publish.skipped ? "text-muted-foreground" : "text-destructive"}>
+              {publish.skipped ? "Publish skipped: " : "Publish failed: "}
+              {publish.reason}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Not published.</span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          {publish?.url && (
+            <a
+              href={publish.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              View commit <ExternalLink className="size-3" />
+            </a>
+          )}
+          {run.files.length > 0 && (
+            <a
+              href={bundleUrl(run.id)}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <Download className="size-3.5" /> Download files (.zip)
+            </a>
+          )}
+        </div>
+      </div>
+
+      {run.metrics.rows && <RunMetricsStrip metrics={run.metrics} />}
+
+      <Section title="Generated files" defaultOpen>
+        <FileViewer files={run.files} />
+      </Section>
+
+      <Section title={`Mapping decisions (${run.decisions.length})`}>
+        <DecisionsTable decisions={run.decisions} />
+      </Section>
+
+      <Section title={`Findings (${run.findings.length})`}>
+        <FindingsList findings={run.findings} />
       </Section>
 
       <Section title="Timeline">
@@ -164,44 +188,18 @@ function RunResultPage() {
           Run metadata
         </h3>
         <dl className="grid gap-x-8 gap-y-3 font-mono text-xs sm:grid-cols-2">
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">files uploaded</dt>
-            <dd className="text-right text-foreground">{run.meta.files.length}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">LLM attempts</dt>
-            <dd className="text-foreground">{run.meta.llmAttempts}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">dry-run cost</dt>
-            <dd className="text-foreground">
-              {run.costGb !== null ? `${run.costGb} GB · $${run.costUsd}` : "—"}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">LLM cost</dt>
-            <dd className="text-foreground">
-              {((run.meta.llmPromptTokens ?? 0) + (run.meta.llmCompletionTokens ?? 0)).toLocaleString("en-US")} tokens
-              {" · $"}
-              {(run.meta.llmCostUsd ?? 0).toFixed(4)}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">created by</dt>
-            <dd className="text-foreground">{run.meta.createdBy ?? "—"}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">approved by</dt>
-            <dd className="text-foreground">{run.meta.approvedBy ?? "—"}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">Dataform workflow</dt>
-            <dd className="text-foreground">{run.meta.workflowId ?? "—"}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">uploads</dt>
-            <dd className="truncate text-right text-foreground">{run.meta.files.join(", ")}</dd>
-          </div>
+          {[
+            ["created by", run.meta.createdBy ?? "—"],
+            ["approved by", run.meta.approvedBy ?? "—"],
+            ["mappings", `${run.mappingsValidated} validated · ${run.mappingsExcluded} excluded`],
+            ["revisions", String(run.revisions.length)],
+            ["uploads", run.meta.files.join(", ") || "—"],
+          ].map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd className="truncate text-right text-foreground">{v}</dd>
+            </div>
+          ))}
         </dl>
       </div>
     </div>

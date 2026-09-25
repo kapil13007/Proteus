@@ -1,16 +1,18 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+  Braces,
   Check,
   Database,
   FileText,
   FolderTree,
   FunctionSquare,
   Loader2,
+  Sparkles,
   Table2,
   X,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { createRun, FILE_PREVIEW_FALLBACK } from "@/lib/api";
+import { createRun, loadSampleFiles, type UploadSlot } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/new-run")({
@@ -23,7 +25,7 @@ export const Route = createFileRoute("/new-run")({
   component: NewRunPage,
 });
 
-type SlotId = "source" | "target" | "sttm" | "repo" | "udf";
+type SlotId = UploadSlot;
 
 interface Slot {
   id: SlotId;
@@ -40,7 +42,7 @@ const SLOTS: Slot[] = [
   {
     id: "source",
     title: "Source schema",
-    description: "Column definitions for your source table(s)",
+    description: "Raw table: columns, types, nullability (markdown table)",
     ext: ".md",
     hint: "source_schema.md",
     icon: Database,
@@ -48,7 +50,7 @@ const SLOTS: Slot[] = [
   {
     id: "target",
     title: "Target schema",
-    description: "Column definitions for your target table(s)",
+    description: "Gold table contract for the dashboards; mark keys with PK",
     ext: ".md",
     hint: "target_schema.md",
     icon: Table2,
@@ -56,30 +58,42 @@ const SLOTS: Slot[] = [
   {
     id: "sttm",
     title: "STTM sheet",
-    description: "The mapping: source → transformation → target",
+    description: "The mapping: source → business rule / SQL → target",
     ext: ".csv",
     extras: [".xlsx", ".xls"],
-    hint: "sttm_mapping.csv / .xlsx",
+    hint: "sttm.csv / sttm.xlsx",
     icon: FileText,
   },
   {
     id: "repo",
-    title: "Repo structure",
-    description: "Folder conventions, naming, config defaults",
+    title: "Folder structure",
+    description: "Your Dataform repo tree — generated files follow its conventions",
     ext: ".md",
-    hint: "repo_structure.md",
+    extras: [".txt"],
+    hint: "folder_structure.md",
     icon: FolderTree,
   },
   {
     id: "udf",
-    title: "UDF definitions",
-    description: "Your team's custom functions (scd1Load, factLoad…)",
-    ext: ".md",
-    hint: "udf_definitions.md",
+    title: "UDF library",
+    description: "includes/functions.js — the agent reuses these instead of raw SQL",
+    ext: ".js",
+    hint: "functions.js",
     optional: true,
     icon: FunctionSquare,
   },
+  {
+    id: "env",
+    title: "Environment variables",
+    description: "includes/env_vars.js — dataset names per environment",
+    ext: ".js",
+    hint: "env_vars.js",
+    optional: true,
+    icon: Braces,
+  },
 ];
+
+const PREVIEW_FALLBACK = "(binary spreadsheet — preview unavailable)";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -187,6 +201,7 @@ function UploadCard({
       <input
         ref={inputRef}
         type="file"
+        accept={[slot.ext, ...(slot.extras ?? [])].join(",")}
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -204,6 +219,8 @@ function NewRunPage() {
   const [errors, setErrors] = useState<Partial<Record<SlotId, string>>>({});
   const [preview, setPreview] = useState<SlotId | null>(null);
   const [starting, setStarting] = useState(false);
+  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   async function handleFile(slot: Slot, f: File) {
     setErrors((prev) => ({ ...prev, [slot.id]: undefined }));
@@ -243,8 +260,24 @@ function NewRunPage() {
 
   const requiredDone = SLOTS.filter((s) => !s.optional).every((s) => files[s.id]);
 
+  async function loadSamples() {
+    setLoadingSamples(true);
+    setStartError(null);
+    try {
+      for (const { slot, file } of await loadSampleFiles()) {
+        const s = SLOTS.find((x) => x.id === slot);
+        if (s) await handleFile(s, file);
+      }
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingSamples(false);
+    }
+  }
+
   async function startRun() {
     setStarting(true);
+    setStartError(null);
     try {
       const payload = SLOTS.flatMap((s) =>
         files[s.id] ? [{ slot: s.id, file: files[s.id]!.file }] : [],
@@ -253,26 +286,41 @@ function NewRunPage() {
       navigate({ to: "/runs/$runId", params: { runId: run_id } });
     } catch (e) {
       setStarting(false);
-      setErrors((prev) => ({ ...prev, source: `Could not start run — is the backend up? (${e})` }));
+      setStartError(
+        e instanceof Error ? e.message : `Could not start run — is the backend up? (${e})`,
+      );
     }
   }
 
   const previewSlot = preview ? SLOTS.find((s) => s.id === preview) : null;
-  const previewContent = preview
-    ? (files[preview]?.content ?? FILE_PREVIEW_FALLBACK[preview])
-    : "";
+  const previewContent = preview ? files[preview]?.content || PREVIEW_FALLBACK : "";
 
   return (
     <div className="mx-auto max-w-4xl">
-      <header className="mb-8">
-        <h2 className="text-lg font-semibold text-foreground">New Run</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Upload your mapping context. The agent handles the rest.
-        </p>
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">New Run</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Upload your mapping context. Rules decide what they can; the LLM only translates
+            natural-language business rules.
+          </p>
+        </div>
+        <button
+          onClick={() => void loadSamples()}
+          disabled={loadingSamples}
+          className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+        >
+          {loadingSamples ? (
+            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Sparkles className="size-3.5" />
+          )}
+          Load sample inputs
+        </button>
       </header>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {SLOTS.map((slot, i) => (
+        {SLOTS.map((slot) => (
           <UploadCard
             key={slot.id}
             slot={slot}
@@ -281,10 +329,15 @@ function NewRunPage() {
             onFile={(f) => void handleFile(slot, f)}
             onClear={() => setFiles((prev) => ({ ...prev, [slot.id]: undefined }))}
             onPreview={() => setPreview(slot.id)}
-            className={i === SLOTS.length - 1 ? "md:col-span-2" : undefined}
           />
         ))}
       </div>
+
+      {startError && (
+        <p className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {startError}
+        </p>
+      )}
 
       <div className="mt-8 flex items-center justify-between">
         <p className="font-mono text-xs text-muted-foreground">
@@ -301,7 +354,11 @@ function NewRunPage() {
       </div>
 
       {previewSlot && (
-        <div className="fixed inset-0 z-40" role="dialog" aria-label={`${previewSlot.title} preview`}>
+        <div
+          className="fixed inset-0 z-40"
+          role="dialog"
+          aria-label={`${previewSlot.title} preview`}
+        >
           <button
             className="absolute inset-0 bg-background/70"
             aria-label="Close preview"

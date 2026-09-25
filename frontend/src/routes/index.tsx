@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { listRuns } from "@/lib/api";
-import { formatDuration, timeAgo } from "@/lib/format";
-import type { Run } from "@/lib/types";
+import { agentMs, formatMs, formatTokens, timeAgo } from "@/lib/format";
+import type { RunSummary } from "@/lib/types";
 import { StatusPill } from "@/components/StatusPill";
 import { Skeleton } from "@/components/Skeleton";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/")({
   component: RunsPage,
 });
 
-function runDestination(run: Run): string {
+function runDestination(run: RunSummary): string {
   return run.status === "running" || run.status === "awaiting_review"
     ? `/runs/${run.id}`
     : `/runs/${run.id}/result`;
@@ -27,12 +27,7 @@ function StatCard({
   highlight?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-lg border bg-card p-5",
-        highlight && "border-info/50 bg-info/5",
-      )}
-    >
+    <div className={cn("rounded-lg border bg-card p-5", highlight && "border-info/50 bg-info/5")}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("mt-2 font-mono text-2xl text-foreground", highlight && "text-info")}>
         {value}
@@ -43,7 +38,12 @@ function StatCard({
 
 function RunsPage() {
   const navigate = useNavigate();
-  const { data: runs, isLoading, isError, refetch } = useQuery({
+  const {
+    data: runs,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["runs"],
     queryFn: listRuns,
     retry: 1,
@@ -105,9 +105,9 @@ function RunsPage() {
   const successRate = finished.length
     ? Math.round((runs.filter((r) => r.status === "succeeded").length / finished.length) * 100)
     : 0;
-  const durations = runs.filter((r) => r.durationSec !== null).map((r) => r.durationSec!);
-  const avgGen = durations.length
-    ? formatDuration(Math.round(durations.reduce((a, b) => a + b, 0) / durations.length))
+  const times = runs.map((r) => agentMs(r.metrics)).filter((t): t is number => t !== undefined);
+  const avgAgent = times.length
+    ? formatMs(Math.round(times.reduce((a, b) => a + b, 0) / times.length))
     : "—";
 
   return (
@@ -116,7 +116,7 @@ function RunsPage() {
         <StatCard label="Total runs" value={String(total)} />
         <StatCard label="Awaiting review" value={String(awaiting)} highlight={awaiting > 0} />
         <StatCard label="Success rate" value={`${successRate}%`} />
-        <StatCard label="Avg. generation time" value={avgGen} />
+        <StatCard label="Avg. agent time" value={avgAgent} />
       </div>
 
       <div className="overflow-x-auto rounded-lg border bg-card">
@@ -126,9 +126,9 @@ function RunsPage() {
               <th className="px-4 py-3 font-medium">Run</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="hidden px-4 py-3 font-medium md:table-cell">Mappings</th>
-              <th className="hidden px-4 py-3 font-medium md:table-cell">Cost</th>
+              <th className="hidden px-4 py-3 font-medium md:table-cell">LLM</th>
               <th className="px-4 py-3 font-medium">Started</th>
-              <th className="hidden px-4 py-3 font-medium sm:table-cell">Duration</th>
+              <th className="hidden px-4 py-3 font-medium sm:table-cell">Agent time</th>
             </tr>
           </thead>
           <tbody>
@@ -158,7 +158,10 @@ function RunsPage() {
                 </td>
                 <td className="hidden px-4 py-3 md:table-cell">
                   <span className="font-mono text-xs text-muted-foreground">
-                    {run.costGb !== null ? `${run.costGb} GB scanned` : "—"}
+                    {run.metrics.llm
+                      ? `${formatTokens(run.metrics.llm.promptTokens + run.metrics.llm.completionTokens)} tok`
+                      : "0 tok"}
+                    {run.metrics.rows?.cached ? ` · ${run.metrics.rows.cached} cached` : ""}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">
@@ -166,7 +169,7 @@ function RunsPage() {
                 </td>
                 <td className="hidden px-4 py-3 sm:table-cell">
                   <span className="font-mono text-xs text-muted-foreground">
-                    {formatDuration(run.durationSec)}
+                    {formatMs(agentMs(run.metrics))}
                   </span>
                 </td>
               </tr>

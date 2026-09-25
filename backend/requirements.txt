@@ -1,17 +1,21 @@
-fastapi==0.115.6
-uvicorn[standard]==0.32.1
-sqlalchemy==2.0.36
-psycopg2-binary==2.9.10
-pydantic==2.10.4
-pydantic-settings==2.7.0
-python-multipart==0.0.20
-pandas==2.2.3
-openpyxl==3.1.5
-langgraph>=0.2.60,<0.3
-langchain-core>=0.3.28,<0.4
-langchain-groq>=0.2.3,<0.3
-langsmith>=0.2.10
-requests==2.32.3
-pyjwt==2.10.1
+# Pinned to versions with wheels for Python 3.11–3.14 (tested on 3.13 and 3.14).
+# API
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+python-multipart==0.0.32
+pydantic==2.13.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
+# App state (SQLite by default) + auth
+sqlalchemy==2.0.54
+pyjwt==2.15.0
 bcrypt==4.2.1
-email-validator==2.2.0
+# Inputs: STTM sheets (CSV / Excel)
+pandas==2.3.3
+openpyxl==3.1.5
+# Local warehouse, SQL dialects, Dataform JS compile (all embedded, no servers)
+duckdb==1.5.5
+sqlglot==30.19.0
+mini-racer==0.14.1
+# HTTP for Groq (LLM) and GitHub (publish)
+httpx==0.28.1

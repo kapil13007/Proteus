@@ -2,12 +2,14 @@ import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 const KEYWORDS =
-  /\b(SELECT|FROM|WHERE|CASE|WHEN|THEN|ELSE|END|AS|AND|OR|NOT|CAST|SAFE_CAST|COALESCE|LOWER|UPPER|TRIM|INITCAP|ROUND|PARSE_DATE|TIMESTAMP|CURRENT_TIMESTAMP|config|js|post_operations|require|const|type|schema|name|uniqueKey|bigquery|partitionBy|tags|incremental|when|self|ref)\b/g;
+  /\b(SELECT|FROM|WHERE|CASE|WHEN|THEN|ELSE|END|AS|AND|OR|NOT|NULL|CAST|SAFE_CAST|SAFE|COALESCE|NULLIF|LOWER|UPPER|TRIM|CONCAT|ROUND|PARSE_DATE|TIMESTAMP|CURRENT_TIMESTAMP|config|js|post_operations|require|const|module|exports|type|schema|name|description|columns|assertions|uniqueKey|nonNull|tags|incremental|when|self|ref)\b/g;
 
 function highlightLine(line: string): string {
   const escaped = line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // comments
-  const commentIdx = escaped.indexOf("--");
+  // comments: SQL "--" anywhere, JS "//" only as a whole-line comment (URLs contain "//")
+  const commentIdx = escaped.trimStart().startsWith("//")
+    ? escaped.indexOf("//")
+    : escaped.indexOf("--");
   let code = escaped;
   let comment = "";
   if (commentIdx >= 0) {
@@ -16,7 +18,9 @@ function highlightLine(line: string): string {
   }
   code = code
     .replace(/('[^']*'|"[^"]*")/g, '<span class="tok-str">$1</span>')
-    .replace(KEYWORDS, '<span class="tok-kw">$1</span>');
+    .replace(KEYWORDS, '<span class="tok-kw">$1</span>')
+    // Dataform templates last: UDF calls and ref()s stand out from plain SQL
+    .replace(/(\$\{[^}]*\})/g, '<span class="tok-tpl">$1</span>');
   if (comment) code += `<span class="tok-com">${comment}</span>`;
   return code;
 }
@@ -57,7 +61,7 @@ export function CodeBlock({
         className,
       )}
     >
-      <style>{`.tok-kw{color:var(--color-primary)}.tok-str{color:var(--color-success)}.tok-com{color:var(--color-muted-foreground);font-style:italic}`}</style>
+      <style>{`.tok-kw{color:var(--color-primary)}.tok-str{color:var(--color-success)}.tok-tpl{color:var(--color-info)}.tok-com{color:var(--color-muted-foreground);font-style:italic}`}</style>
       <table className="w-full border-collapse">
         <tbody>
           {lines.map((_, i) => (

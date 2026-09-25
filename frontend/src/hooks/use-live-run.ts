@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { peekRun, subscribeRun } from "@/lib/api";
 import type { Run } from "@/lib/types";
 
-/** Subscribes to the mock run store; starts the simulated agent for running runs. */
+/** Subscribes to a run: re-renders on every poll while the run is live (see subscribeRun). */
 export function useLiveRun(id: string): Run | undefined {
   const [run, setRun] = useState<Run | undefined>(undefined);
 
